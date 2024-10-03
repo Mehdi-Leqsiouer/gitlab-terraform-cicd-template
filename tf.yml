@@ -1,0 +1,106 @@
+variables:
+
+  PLAN: plan.cache
+  PLAN_JSON: plan.json
+  TERRAFORM_DIR: 'terraform'
+  DESTROY_ENABLE: "false"
+  GCP_ENV: dev
+  TFVARS_FILE: terraform.tfvars
+
+
+  GCP_POOL_ID: orange-pool
+  GCP_PROVIDER_ID: gitlab-tech-orange
+
+  GCP_WORKLOAD_IDENTITY_PROVIDER: projects/${GCP_PROJECT_ID}/locations/global/workloadIdentityPools/$GCP_POOL_ID/providers/$GCP_PROVIDER_ID
+
+  TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${COUNTRY}-terraform-state-${GCP_ENV}"
+  TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${COUNTRY}-terraform-state-${GCP_ENV}/lock"
+  TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${COUNTRY}-terraform-state-${GCP_ENV}/lock"
+  TF_HTTP_USERNAME: "${CI_REGISTRY_USER}"
+  TF_HTTP_PASSWORD: "${CI_REGISTRY_PASSWORD}"
+
+
+.terraform-base:
+  image:
+    name: hashicorp/terraform
+    entrypoint: [""]
+  before_script:
+    - export GOOGLE_APPLICATION_CREDENTIALS=../../.gcp_temp_cred.json
+    - export TF_VAR_project_id="$GCP_PROJECT_NAME"
+    - export TF_VAR_environment="$GCP_ENV"
+    - export TF_VAR_country="$COUNTRY"
+    - export TF_VAR_region="$GCP_REGION"
+    - export TF_VAR_application_id="$APPLICATION_ID"
+    - export TF_VAR_workload="$WORKLOAD"
+    - apk --no-cache add jq
+    - alias convert_report="jq -r '([.resource_changes[]?.change.actions?]|flatten)|{\"create\":(map(select(.==\"create\"))|length),\"update\":(map(select(.==\"update\"))|length),\"delete\":(map(select(.==\"delete\"))|length)}'"
+    - cd "${TERRAFORM_DIR}/${GCP_ENV}"
+    - terraform init
+
+
+stages:
+  - authenticate
+  - terraform
+
+
+gcp-authentication:
+  stage: authenticate
+  image: google/cloud-sdk:slim
+  id_tokens:
+    ID_TOKEN_1:
+      aud: https://gitlab.tech.orange
+  script:
+    - gcloud config set project ${GCP_PROJECT_NAME}
+    - echo $ID_TOKEN_1 > .ci_job_jwt_file
+    - gcloud iam workload-identity-pools create-cred-config ${GCP_WORKLOAD_IDENTITY_PROVIDER}
+      --service-account="${GCP_SERVICE_ACCOUNT}"
+      --output-file=.gcp_temp_cred.json
+      --credential-source-file=$CI_PROJECT_DIR/.ci_job_jwt_file
+  artifacts:
+    paths:
+      - .ci_job_jwt_file
+      - .gcp_temp_cred.json
+    expire_in: 1 day
+
+
+terraform-validate:
+  extends:
+    - .terraform-base
+  stage: terraform
+  needs: ["gcp-authentication"]
+  script:
+    - terraform validate
+
+terraform-plan:
+  extends:
+    - .terraform-base
+  stage: terraform
+  needs: [ "gcp-authentication"]
+  script:
+    - terraform plan -var-file="$TFVARS_FILE" -out=$PLAN
+    - terraform show --json $PLAN | convert_report > $PLAN_JSON
+  artifacts:
+    paths:
+      - $TERRAFORM_DIR/$GCP_ENV/$PLAN
+    reports:
+      terraform: $TERRAFORM_DIR/$GCP_ENV/$PLAN_JSON
+
+terraform-apply:
+  extends:
+    - .terraform-base
+  stage: terraform
+  needs: [ "gcp-authentication", "terraform-plan"]
+  script:
+    - terraform apply -auto-approve $PLAN
+    - terraform output
+
+
+terraform-destroy:
+  extends: .terraform-base
+  stage: terraform
+  needs: ["gcp-authentication"]
+  script:
+    - terraform destroy -auto-approve -var-file="$TFVARS_FILE"
+  when: manual
+  rules:
+    - if: ($DESTROY_ENABLE == "true")
