@@ -1,0 +1,29 @@
+# included templates
+include:
+  # Python template
+  - project: "badgerworks/cicd-template/terraform-template"
+    ref: 'main'
+    file: "tf.yml"
+
+variables:
+  COUNTRY: fr
+  WORKLOAD: ran
+  APPLICATION_ID: temperature
+  GCP_REGION: europe-west3
+  TF_TOKEN_gitlab_tech_orange: $CI_JOB_TOKEN
+
+
+workflow:
+  rules:
+  - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop" || ($CI_COMMIT_REF_NAME == "develop" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == null)
+    variables:
+      GCP_ENV: "dev"
+      GCP_PROJECT_ID: 413254456010
+      GCP_PROJECT_NAME: sbx-31371-mzmh413ihv4ixf1v68lv
+      GCP_SERVICE_ACCOUNT: sa-for-cicd-dev@sbx-31371-mzmh413ihv4ixf1v68lv.iam.gserviceaccount.com
+      DESTROY_ENABLE: true
+
+
+stages:
+  - authenticate
+  - terraform
