@@ -10,8 +10,8 @@ variables:
   TFVARS_FILE: terraform.tfvars
 
 
-  GCP_POOL_ID: orange-pool
-  GCP_PROVIDER_ID: gitlab-tech-orange
+  GCP_POOL_ID: pool
+  GCP_PROVIDER_ID: gitlab-tech
 
   GCP_WORKLOAD_IDENTITY_PROVIDER: projects/${GCP_PROJECT_ID}/locations/global/workloadIdentityPools/$GCP_POOL_ID/providers/$GCP_PROVIDER_ID
 
@@ -51,7 +51,7 @@ gcp-authentication:
   image: google/cloud-sdk:slim
   id_tokens:
     ID_TOKEN_1:
-      aud: https://gitlab.tech.orange
+      aud: https://gitlab.tech
   script:
     - gcloud config set project ${GCP_PROJECT_NAME}
     - echo $ID_TOKEN_1 > .ci_job_jwt_file
