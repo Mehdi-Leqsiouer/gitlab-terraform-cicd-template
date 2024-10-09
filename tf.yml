@@ -1,7 +1,9 @@
 variables:
 
   PLAN: plan.cache
+  PLAN_DESTROY: plan_destroy.cache
   PLAN_JSON: plan.json
+  PLAN_JSON_DESTROY: plan_destroy.json
   TERRAFORM_DIR: 'terraform'
   DESTROY_ENABLE: "false"
   GCP_ENV: dev
@@ -41,6 +43,7 @@ variables:
 stages:
   - authenticate
   - terraform
+  - terraform-destroy
 
 
 gcp-authentication:
@@ -95,10 +98,26 @@ terraform-apply:
     - terraform output
 
 
+terraform-plan-destroy:
+  extends: .terraform-base
+  stage: terraform-destroy
+  needs: ["gcp-authentication"]
+  script:
+    - terraform plan -destroy -var-file="$TFVARS_FILE" -out=$PLAN_DESTROY
+    - terraform show --json $PLAN_DESTROY | convert_report > $PLAN_JSON_DESTROY
+  when: manual
+  rules:
+    - if: ($DESTROY_ENABLE == "true")
+  artifacts:
+    paths:
+      - $TERRAFORM_DIR/$GCP_ENV/$PLAN_DESTROY
+    reports:
+      terraform: $TERRAFORM_DIR/$GCP_ENV/$PLAN_JSON_DESTROY
+
 terraform-destroy:
   extends: .terraform-base
-  stage: terraform
-  needs: ["gcp-authentication"]
+  stage: terraform-destroy
+  needs: ["gcp-authentication", "terraform-plan-destroy"]
   script:
     - terraform destroy -auto-approve -var-file="$TFVARS_FILE"
   when: manual
