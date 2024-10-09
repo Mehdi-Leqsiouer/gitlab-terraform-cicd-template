@@ -22,8 +22,8 @@ It uses the following variables, variable that does not have default needs to be
 | `DESTROY_ENABLE`      | failsafe to prevent resource description. If set to 'true', this step is manual | `false`              |
 | `GCP_PROJECT_NAME`    | GCP project name                                                                | ``                   |
 | `GCP_PROJECT_ID`      | GCP project ID                                                                  | ``                   |
-| `GCP_POOL_ID`         | GCP WIF pool name                                                               | `orange-pool`        |
-| `GCP_PROVIDER_ID`     | GCP WIF provider id configured                                                  | `gitlab-tech-orange` |
+| `GCP_POOL_ID`         | GCP WIF pool name                                                               | `pool`        |
+| `GCP_PROVIDER_ID`     | GCP WIF provider id configured                                                  | `gitlab-tech` |
 | `GCP_SERVICE_ACCOUNT` | GCP Service account for CICD                                                    | ``                   |
 | `TFVARS_FILE`         | Name of tvars file                                                              | `terraform.tfvars`   |
 | `GCP_ENV`             | Environment                                                                     | `dev`                |
