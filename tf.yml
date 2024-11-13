@@ -10,10 +10,12 @@ variables:
   TFVARS_FILE: terraform.tfvars
 
 
-  GCP_POOL_ID: pool
-  GCP_PROVIDER_ID: gitlab-tech
+  GCP_POOL_ID: orange-pool
+  GCP_PROVIDER_ID: gitlab-tech-orange
 
   GCP_WORKLOAD_IDENTITY_PROVIDER: projects/${GCP_PROJECT_ID}/locations/global/workloadIdentityPools/$GCP_POOL_ID/providers/$GCP_PROVIDER_ID
+
+  GOOGLE_APPLICATION_CREDENTIALS: $CI_BUILDS_DIR/.workload_identity.wlconfig
 
   TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${COUNTRY}-terraform-state-${GCP_ENV}"
   TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${COUNTRY}-terraform-state-${GCP_ENV}/lock"
@@ -26,8 +28,24 @@ variables:
   image:
     name: hashicorp/terraform
     entrypoint: [""]
+  id_tokens:
+    ID_TOKEN_1:
+      aud: https://gitlab.tech.orange
   before_script:
-    - export GOOGLE_APPLICATION_CREDENTIALS=../../.gcp_temp_cred.json
+    - |-
+      echo $ID_TOKEN_1 > $CI_BUILDS_DIR/.workload_identity.jwt
+      cat << EOF > $GOOGLE_APPLICATION_CREDENTIALS
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/$GCP_WORKLOAD_IDENTITY_PROVIDER",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {
+          "file": "$CI_BUILDS_DIR/.workload_identity.jwt"
+        },
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$GCP_SERVICE_ACCOUNT:generateAccessToken"
+      }
+      EOF
     - export TF_VAR_project_id="$GCP_PROJECT_NAME"
     - export TF_VAR_environment="$GCP_ENV"
     - export TF_VAR_country="$COUNTRY"
@@ -41,36 +59,14 @@ variables:
 
 
 stages:
-  - authenticate
   - terraform
   - terraform-destroy
-
-
-gcp-authentication:
-  stage: authenticate
-  image: google/cloud-sdk:slim
-  id_tokens:
-    ID_TOKEN_1:
-      aud: https://gitlab.tech
-  script:
-    - gcloud config set project ${GCP_PROJECT_NAME}
-    - echo $ID_TOKEN_1 > .ci_job_jwt_file
-    - gcloud iam workload-identity-pools create-cred-config ${GCP_WORKLOAD_IDENTITY_PROVIDER}
-      --service-account="${GCP_SERVICE_ACCOUNT}"
-      --output-file=.gcp_temp_cred.json
-      --credential-source-file=$CI_PROJECT_DIR/.ci_job_jwt_file
-  artifacts:
-    paths:
-      - .ci_job_jwt_file
-      - .gcp_temp_cred.json
-    expire_in: 1 day
 
 
 terraform-validate:
   extends:
     - .terraform-base
   stage: terraform
-  needs: ["gcp-authentication"]
   script:
     - terraform validate
 
@@ -78,7 +74,7 @@ terraform-plan:
   extends:
     - .terraform-base
   stage: terraform
-  needs: [ "gcp-authentication"]
+  needs: [ "terraform-validate"]
   script:
     - terraform plan -var-file="$TFVARS_FILE" -out=$PLAN
     - terraform show --json $PLAN | convert_report > $PLAN_JSON
@@ -92,7 +88,11 @@ terraform-apply:
   extends:
     - .terraform-base
   stage: terraform
-  needs: [ "gcp-authentication", "terraform-plan"]
+  needs: ["terraform-plan"]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE != "merge_request_event"'
   script:
     - terraform apply -auto-approve $PLAN
     - terraform output
@@ -101,13 +101,15 @@ terraform-apply:
 terraform-plan-destroy:
   extends: .terraform-base
   stage: terraform-destroy
-  needs: ["gcp-authentication"]
+  needs: ["terraform-validate"]
   script:
     - terraform plan -destroy -var-file="$TFVARS_FILE" -out=$PLAN_DESTROY
     - terraform show --json $PLAN_DESTROY | convert_report > $PLAN_JSON_DESTROY
-  when: manual
   rules:
-    - if: ($DESTROY_ENABLE == "true")
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE != "merge_request_event" && $DESTROY_ENABLE == "true"'
+      when: manual
   artifacts:
     paths:
       - $TERRAFORM_DIR/$GCP_ENV/$PLAN_DESTROY
@@ -117,9 +119,6 @@ terraform-plan-destroy:
 terraform-destroy:
   extends: .terraform-base
   stage: terraform-destroy
-  needs: ["gcp-authentication", "terraform-plan-destroy"]
+  needs: ["terraform-plan-destroy"]
   script:
     - terraform destroy -auto-approve -var-file="$TFVARS_FILE"
-  when: manual
-  rules:
-    - if: ($DESTROY_ENABLE == "true")
