@@ -25,6 +25,5 @@ workflow:
 
 
 stages:
-  - authenticate
   - terraform
   - terraform-destroy
