@@ -30,7 +30,7 @@ variables:
     entrypoint: [""]
   id_tokens:
     ID_TOKEN_1:
-      aud: https://gitlab.tech.orange
+      aud: https://gitlab
   before_script:
     - |-
       echo $ID_TOKEN_1 > $CI_BUILDS_DIR/.workload_identity.jwt
