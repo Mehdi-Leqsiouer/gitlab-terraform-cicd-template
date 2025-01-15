@@ -10,8 +10,8 @@ variables:
   TFVARS_FILE: terraform.tfvars
 
 
-  GCP_POOL_ID: orange-pool
-  GCP_PROVIDER_ID: gitlab-tech-orange
+  GCP_POOL_ID: my-pool
+  GCP_PROVIDER_ID: gitlab
 
   GCP_WORKLOAD_IDENTITY_PROVIDER: projects/${GCP_PROJECT_ID}/locations/global/workloadIdentityPools/$GCP_POOL_ID/providers/$GCP_PROVIDER_ID
 
